@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
+import datetime
+import base64
 
 def detect_table_lines(image_path):
     img = cv2.imread(image_path)
@@ -33,7 +35,7 @@ def detect_table_lines(image_path):
 
     for contour in v_contours:
         x, y, w, h = cv2.boundingRect(contour)
-        if h > min_height and w < 10:  # Đường dọc: cao và hẹp
+        if h > min_height and w < 10:  
             valid_v_lines.append((x, y, w, h))
 
     valid_h_lines.sort(key=lambda x: x[1])  
@@ -71,14 +73,15 @@ def extract_cells(image_path, output_dir="cells"):
                     cell_img = img[y1:y2, x1:x2]
                     cells.append(cell_img)
                     row_cells.append(cell_img)
-
-                    cv2.imwrite(f"{output_dir}/cell_r{i:02d}_c{j:02d}.png",
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    cv2.imwrite(f"{output_dir}/{timestamp}_cell_r{i:02d}_c{j:02d}.png",
                                cv2.cvtColor(cell_img, cv2.COLOR_RGB2BGR))
 
             if row_cells:
                 rows.append(row_cells)
                 row_img = img[y1:y2, :]
-                cv2.imwrite(f"{output_dir}/row_{i:02d}.png",
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                cv2.imwrite(f"{output_dir}/{timestamp}_row_{i:02d}.png",
                            cv2.cvtColor(row_img, cv2.COLOR_RGB2BGR))
 
     return cells, rows
@@ -207,7 +210,8 @@ def extract_first_column_cells(image_path, output_dir="first_column_cells"):
             continue
 
         cell_img_bgr = cv2.cvtColor(cell_img, cv2.COLOR_RGB2BGR)
-        output_path = f"{output_dir}/first_col_cell_row_{i+1:02d}.png"
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        output_path = f"{output_dir}/{timestamp}_first_col_cell_row_{i+1:02d}.png"
         cv2.imwrite(output_path, cell_img_bgr)
         cropped_count += 1
 
@@ -257,7 +261,8 @@ def extract_intersecting_rows(image_path, output_dir="intersecting_rows"):
 
         if row_img.size > 0:
             row_img_bgr = cv2.cvtColor(row_img, cv2.COLOR_RGB2BGR)
-            output_path = f"{output_dir}/row_{i+1:02d}.png"
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            output_path = f"{output_dir}/{timestamp}_row_{i+1:02d}.png"
             cv2.imwrite(output_path, row_img_bgr)
             cropped_count += 1
 
@@ -267,26 +272,29 @@ def extract_intersecting_rows(image_path, output_dir="intersecting_rows"):
         return
 
 def extract_rows_intersecting_first_v_line(detection_image_path, original_image_path, output_dir="final_cropped_rows"):
-    import os
-    import cv2
-    os.makedirs(output_dir, exist_ok=True)
 
+    get_cropped_images_as_base64(detection_image_path, original_image_path, output_dir=output_dir)
+
+def _get_cropped_images(detection_image_path, original_image_path):
     _, all_h_lines, v_lines, method = auto_detect_table(detection_image_path)
 
     if not v_lines:
-        return
+        print("Không tìm thấy đường kẻ dọc.")
+        return {"slices": [], "vertical_cut": None}
     if len(all_h_lines) < 2:
-        return
+        return {"slices": [], "vertical_cut": None}
 
     original_img_bgr = cv2.imread(original_image_path)
     if original_img_bgr is None:
-        return
+        print("Không thể đọc ảnh gốc.")
+        return {"slices": [], "vertical_cut": None}
     original_img_rgb = cv2.cvtColor(original_img_bgr, cv2.COLOR_BGR2RGB)
 
     v_lines.sort(key=lambda line: line[0])
 
     if len(v_lines) < 2:
-        return
+        print("Không đủ đường kẻ dọc để xác định cột đầu tiên.")
+        return {"slices": [], "vertical_cut": None}
 
     border_line = v_lines[0]
 
@@ -298,7 +306,8 @@ def extract_rows_intersecting_first_v_line(detection_image_path, original_image_
             break  
 
     if target_v_line is None:
-        return
+        print("Không tìm thấy đường kẻ dọc phù hợp.")
+        return {"slices": [], "vertical_cut": None}
 
     first_v_line_x = target_v_line[0]
 
@@ -333,7 +342,7 @@ def extract_rows_intersecting_first_v_line(detection_image_path, original_image_
     
     sorted_cut_points = sorted(list(final_cut_points))
 
-    cropped_count = 0
+    slice_images = []
     if len(sorted_cut_points) > 1:
         for i in range(len(sorted_cut_points) - 1):
             slice_y1 = sorted_cut_points[i]
@@ -346,15 +355,9 @@ def extract_rows_intersecting_first_v_line(detection_image_path, original_image_
             
             if slice_img.size > 0:
                 slice_img_bgr = cv2.cvtColor(slice_img, cv2.COLOR_RGB2BGR)
-                output_path = f"{output_dir}/final_slice_{i+1:02d}.png"
-                cv2.imwrite(output_path, slice_img_bgr)
-                cropped_count += 1
+                slice_images.append(slice_img_bgr)
     
-    if cropped_count > 0:
-        return
-    else:
-        return
-
+    vertical_cut_image_bgr = None
     if len(v_lines) >= 2:
         target_vertical_line_for_cut = v_lines[-2]
         cut_x = target_vertical_line_for_cut[0]
@@ -362,13 +365,45 @@ def extract_rows_intersecting_first_v_line(detection_image_path, original_image_
         vertical_cut_image = original_img_rgb[:, cut_x:]
 
         if vertical_cut_image.size > 0:
-            # Lưu ảnh đã cắt
-            output_path_vertical = f"{output_dir}/final_vertical_cut.png"
             vertical_cut_image_bgr = cv2.cvtColor(vertical_cut_image, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(output_path_vertical, vertical_cut_image_bgr)
             
-        else:
-            print("Lỗi: Ảnh cắt dọc bị rỗng.")
 
     else:
         print(f"Không đủ đường kẻ dọc (cần ít nhất 2, tìm thấy {len(v_lines)}) để thực hiện cắt dọc bổ sung.")
+
+    return {"slices": slice_images, "vertical_cut": vertical_cut_image_bgr}
+
+
+def get_cropped_images_as_base64(detection_image_path, original_image_path, output_dir=None):
+
+    if output_dir:
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+
+    cropped_images = _get_cropped_images(detection_image_path, original_image_path)
+    base64_list = []
+
+    slice_images = cropped_images["slices"]
+    vertical_cut_image = cropped_images["vertical_cut"]
+
+    for i, img in enumerate(slice_images):
+        if output_dir:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"{output_dir}/{timestamp}_slice_{i+1:02d}.png"
+            cv2.imwrite(output_path, img)
+
+        _, buffer = cv2.imencode('.png', img)
+        base64_str = base64.b64encode(buffer).decode('utf-8')
+        base64_list.append(base64_str)
+
+    if vertical_cut_image is not None:
+        if output_dir:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path_vertical = f"{output_dir}/{timestamp}_vertical.png"
+            cv2.imwrite(output_path_vertical, vertical_cut_image)
+
+        _, buffer = cv2.imencode('.png', vertical_cut_image)
+        base64_str = base64.b64encode(buffer).decode('utf-8')
+        base64_list.append(base64_str)
+
+    return base64_list
