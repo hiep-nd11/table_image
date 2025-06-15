@@ -331,7 +331,7 @@ def _get_cropped_images(detection_image_path, original_image_path):
                 if y1 < line[1] < y2:
                     lines_in_between += 1
             
-            if lines_in_between > 2:
+            if lines_in_between > 1:
                 special_row_boundaries.append((y1, y2))
 
     img_height, img_width, _ = original_img_rgb.shape
