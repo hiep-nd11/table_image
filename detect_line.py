@@ -43,48 +43,6 @@ def detect_table_lines(image_path):
 
     return img_rgb, valid_h_lines, valid_v_lines
 
-def extract_cells(image_path, output_dir="cells"):
-    import os
-    os.makedirs(output_dir, exist_ok=True)
-
-    img, h_lines, v_lines = detect_table_lines(image_path)
-
-    h_lines.insert(0, (0, 0, img.shape[1], 1))
-    h_lines.append((0, img.shape[0]-1, img.shape[1], 1))
-
-    v_lines.insert(0, (0, 0, 1, img.shape[0]))
-    v_lines.append((img.shape[1]-1, 0, 1, img.shape[0]))
-
-    y_coords = [line[1] for line in h_lines]
-    x_coords = [line[0] for line in v_lines]
-
-    cells = []
-    rows = []
-
-    for i in range(len(y_coords) - 1):
-        row_cells = []
-        y1, y2 = y_coords[i], y_coords[i+1]
-
-        if y2 - y1 > 20:  
-            for j in range(len(x_coords) - 1):
-                x1, x2 = x_coords[j], x_coords[j+1]
-
-                if x2 - x1 > 30:  
-                    cell_img = img[y1:y2, x1:x2]
-                    cells.append(cell_img)
-                    row_cells.append(cell_img)
-                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                    cv2.imwrite(f"{output_dir}/{timestamp}_cell_r{i:02d}_c{j:02d}.png",
-                               cv2.cvtColor(cell_img, cv2.COLOR_RGB2BGR))
-
-            if row_cells:
-                rows.append(row_cells)
-                row_img = img[y1:y2, :]
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                cv2.imwrite(f"{output_dir}/{timestamp}_row_{i:02d}.png",
-                           cv2.cvtColor(row_img, cv2.COLOR_RGB2BGR))
-
-    return cells, rows
 
 def visualize_detection(image_path):
     img, h_lines, v_lines = detect_table_lines(image_path)
@@ -175,105 +133,9 @@ def auto_detect_table(image_path):
     except:
         return None, [], [], "failed"
 
-def extract_first_column_cells(image_path, output_dir="first_column_cells"):
-
-    import os
-    os.makedirs(output_dir, exist_ok=True)
-
-    img_rgb, h_lines, v_lines, method = auto_detect_table(image_path)
-
-    if img_rgb is None:
-        return 
-
-    if len(v_lines) < 2:
-        return
-    if len(h_lines) < 2:
-        return
-
-    h_lines.sort(key=lambda line: line[1]) 
-    v_lines.sort(key=lambda line: line[0]) 
-
-    x1 = v_lines[0][0]
-    x2 = v_lines[1][0]
-
-    cropped_count = 0
-    for i in range(len(h_lines) - 1):
-        y1 = h_lines[i][1] + h_lines[i][3] 
-        y2 = h_lines[i+1][1] 
-
-        if y2 - y1 < 10: 
-            continue
-
-        cell_img = img_rgb[y1:y2, x1:x2]
-
-        if cell_img.size == 0:
-            continue
-
-        cell_img_bgr = cv2.cvtColor(cell_img, cv2.COLOR_RGB2BGR)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        output_path = f"{output_dir}/{timestamp}_first_col_cell_row_{i+1:02d}.png"
-        cv2.imwrite(output_path, cell_img_bgr)
-        cropped_count += 1
-
-    if cropped_count > 0:
-        return
-    else:
-        return
-
-def extract_intersecting_rows(image_path, output_dir="intersecting_rows"):
-
-    import os
-    os.makedirs(output_dir, exist_ok=True)
-
-    img_rgb, h_lines, v_lines, method = auto_detect_table(image_path)
-    if img_rgb is None:
-        return
-
-    if len(v_lines) < 2 or len(h_lines) < 2:
-        return
-
-    v_lines.sort(key=lambda line: line[0])
-    h_lines.sort(key=lambda line: line[1])
-
-    first_col_x_start = v_lines[0][0]
-    first_col_x_end = v_lines[1][0]
-
-    intersecting_h_lines = []
-    for x, y, w, h in h_lines:
-        line_x_start = x
-        line_x_end = x + w
-        if line_x_start < first_col_x_end and first_col_x_start < line_x_end:
-            intersecting_h_lines.append((x, y, w, h))
-
-    if len(intersecting_h_lines) < 2:
-        return
-
-    img_height, img_width, _ = img_rgb.shape
-    cropped_count = 0
-    for i in range(len(intersecting_h_lines) - 1):
-        y1 = intersecting_h_lines[i][1]
-        y2 = intersecting_h_lines[i+1][1]
-
-        if y2 - y1 < 5:
-            continue
-
-        row_img = img_rgb[y1:y2, 0:img_width]
-
-        if row_img.size > 0:
-            row_img_bgr = cv2.cvtColor(row_img, cv2.COLOR_RGB2BGR)
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            output_path = f"{output_dir}/{timestamp}_row_{i+1:02d}.png"
-            cv2.imwrite(output_path, row_img_bgr)
-            cropped_count += 1
-
-    if cropped_count > 0:
-        return
-    else:
-        return
-
 def extract_rows_intersecting_first_v_line(detection_image_path, original_image_path, output_dir="final_cropped_rows"):
 
-    get_cropped_images_as_base64(detection_image_path, original_image_path, output_dir=output_dir)
+    get_processed_image_data(detection_image_path, original_image_path, output_dir=output_dir)
 
 def _get_cropped_images(detection_image_path, original_image_path):
     _, all_h_lines, v_lines, method = auto_detect_table(detection_image_path)
@@ -342,7 +204,7 @@ def _get_cropped_images(detection_image_path, original_image_path):
     
     sorted_cut_points = sorted(list(final_cut_points))
 
-    slice_images = []
+    slice_details = []
     if len(sorted_cut_points) > 1:
         for i in range(len(sorted_cut_points) - 1):
             slice_y1 = sorted_cut_points[i]
@@ -351,11 +213,137 @@ def _get_cropped_images(detection_image_path, original_image_path):
             if slice_y2 - slice_y1 < 5:
                 continue
 
+            lines_inside = 0
+            for line in all_h_lines:
+                if slice_y1 < line[1] < slice_y2:
+                    lines_inside += 1
+            
+            is_single_row = (lines_inside == 0)
+
             slice_img = original_img_rgb[slice_y1:slice_y2, 0:img_width]
             
             if slice_img.size > 0:
-                slice_img_bgr = cv2.cvtColor(slice_img, cv2.COLOR_RGB2BGR)
-                slice_images.append(slice_img_bgr)
+                slice_details.append({
+                    "is_single_row": is_single_row,
+                    "y_start": slice_y1,
+                    "y_end": slice_y2
+                })
+
+    grouped_slices = []
+    i = 0
+    while i < len(slice_details):
+        current_slice_info = slice_details[i]
+        if not current_slice_info['is_single_row']:
+            grouped_slices.append({
+                "type": "complex",
+                "slices": [current_slice_info],
+                "y_start": current_slice_info['y_start'],
+                "y_end": current_slice_info['y_end']
+            })
+            i += 1
+        else:
+            group_start_index = i
+            j = i
+            while j < len(slice_details) and slice_details[j]['is_single_row']:
+                j += 1
+            
+            group_end_index = j - 1
+            group_slices = slice_details[group_start_index:j]
+            
+            grouped_slices.append({
+                "type": "single_group",
+                "slices": group_slices,
+                "y_start": group_slices[0]['y_start'],
+                "y_end": group_slices[-1]['y_end']
+            })
+            
+            i = j
+    
+    final_slices = []
+    first_merged_group = None
+    isolated_singles = []
+    
+    for group in grouped_slices:
+        if group["type"] == "single_group" and len(group["slices"]) > 1:
+            if first_merged_group is None:
+                first_merged_group = group
+            else:
+                final_slices.append(group)
+        elif group["type"] == "single_group" and len(group["slices"]) == 1:
+            isolated_singles.extend(group["slices"])
+        else:
+            final_slices.append(group)
+    
+    if isolated_singles:
+        if first_merged_group is not None:
+            original_count = len(first_merged_group["slices"])
+            first_merged_group["slices"].extend(isolated_singles)
+            first_merged_group["y_end"] = isolated_singles[-1]["y_end"]
+        else:
+            first_complex_group = None
+            for i, group in enumerate(final_slices):
+                if group["type"] == "complex":
+                    first_complex_group = group
+                    final_slices.pop(i)  
+                    break
+            
+            if first_complex_group is not None:
+                first_merged_group = {
+                    "type": "single_group",
+                    "slices": first_complex_group["slices"] + isolated_singles,
+                    "y_start": first_complex_group["y_start"],
+                    "y_end": isolated_singles[-1]["y_end"]
+                }
+            else:
+                first_merged_group = {
+                    "type": "single_group",
+                    "slices": isolated_singles,
+                    "y_start": isolated_singles[0]["y_start"],
+                    "y_end": isolated_singles[-1]["y_end"]
+                }
+    
+    if first_merged_group is not None:
+        final_slices.insert(0, first_merged_group)
+    
+    final_processed_slices = []
+    for group in final_slices:
+        if group["type"] == "complex":
+            slice_info = group["slices"][0]
+            y_start = slice_info['y_start']
+            y_end = slice_info['y_end']
+            img = original_img_rgb[y_start:y_end, 0:img_width]
+            img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            final_processed_slices.append({
+                "image": img_bgr,
+                "is_single_row": False,
+                "y_start": y_start,
+                "y_end": y_end,
+                "merged_rows": 1
+            })
+        else:  
+
+            individual_images = []
+            overall_y_start = group["slices"][0]["y_start"]
+            overall_y_end = group["slices"][-1]["y_end"]
+            
+            for slice_info in group["slices"]:
+                slice_y_start = slice_info["y_start"]
+                slice_y_end = slice_info["y_end"]
+                slice_img = original_img_rgb[slice_y_start:slice_y_end, 0:img_width]
+                individual_images.append(slice_img)
+            
+            if individual_images:
+                merged_img = np.vstack(individual_images)
+                merged_img_bgr = cv2.cvtColor(merged_img, cv2.COLOR_RGB2BGR)
+                
+                num_merged = len(group["slices"])
+                final_processed_slices.append({
+                    "image": merged_img_bgr,
+                    "is_single_row": (num_merged == 1),
+                    "y_start": overall_y_start,
+                    "y_end": overall_y_end,
+                    "merged_rows": num_merged
+                })
     
     vertical_cut_image_bgr = None
     if len(v_lines) >= 2:
@@ -367,26 +355,24 @@ def _get_cropped_images(detection_image_path, original_image_path):
         if vertical_cut_image.size > 0:
             vertical_cut_image_bgr = cv2.cvtColor(vertical_cut_image, cv2.COLOR_RGB2BGR)
             
-
     else:
         print(f"Không đủ đường kẻ dọc (cần ít nhất 2, tìm thấy {len(v_lines)}) để thực hiện cắt dọc bổ sung.")
 
-    return {"slices": slice_images, "vertical_cut": vertical_cut_image_bgr}
+    return {"slices": final_processed_slices, "vertical_cut": vertical_cut_image_bgr}
 
 
-def get_cropped_images_as_base64(detection_image_path, original_image_path, output_dir=None):
+def get_processed_image_data(detection_image_path, original_image_path, output_dir=None):
 
     if output_dir:
         import os
         os.makedirs(output_dir, exist_ok=True)
 
-    cropped_images = _get_cropped_images(detection_image_path, original_image_path)
-    base64_list = []
-
-    slice_images = cropped_images["slices"]
-    vertical_cut_image = cropped_images["vertical_cut"]
-
-    for i, img in enumerate(slice_images):
+    cropped_data = _get_cropped_images(detection_image_path, original_image_path)
+    
+    processed_slices = []
+    for i, slice_details in enumerate(cropped_data["slices"]):
+        img = slice_details["image"]
+        
         if output_dir:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = f"{output_dir}/{timestamp}_slice_{i+1:02d}.png"
@@ -394,8 +380,14 @@ def get_cropped_images_as_base64(detection_image_path, original_image_path, outp
 
         _, buffer = cv2.imencode('.png', img)
         base64_str = base64.b64encode(buffer).decode('utf-8')
-        base64_list.append(base64_str)
+        
+        new_slice_info = slice_details.copy()
+        new_slice_info.pop("image")
+        new_slice_info["image_b64"] = base64_str
+        processed_slices.append(new_slice_info)
 
+    processed_vertical_cut = None
+    vertical_cut_image = cropped_data["vertical_cut"]
     if vertical_cut_image is not None:
         if output_dir:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -404,6 +396,9 @@ def get_cropped_images_as_base64(detection_image_path, original_image_path, outp
 
         _, buffer = cv2.imencode('.png', vertical_cut_image)
         base64_str = base64.b64encode(buffer).decode('utf-8')
-        base64_list.append(base64_str)
+        processed_vertical_cut = {"image_b64": base64_str}
 
-    return base64_list
+    return {
+        "horizontal_slices": processed_slices,
+        "vertical_slice": processed_vertical_cut
+    }
